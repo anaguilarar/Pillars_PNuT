@@ -236,12 +236,31 @@ def change_img_contrast(image, alpha = 3,beta = 50  ):
                 
     return new_image
 
+def get_filenames(imgpath, suffix = 'jpg'):
+
+    if type(imgpath) is str:
+        if os.path.exists(imgpath):
+            fn = os.path.basename(imgpath)
+        else: 
+            raise ValueError("the {} file does not exist".format(imgpath))
+
+    elif type(imgpath) is list:
+        fn = [get_filenames(i) for i in imgpath]
+
+    else:
+        fn = None
+
+    return fn
+
+
 def read_image(imgpath):
     if type(imgpath) is str:
         if os.path.exists(imgpath):
             img = cv2.imread(imgpath)
         else: 
             raise ValueError("the file does not exist")
+    elif type(imgpath) is list:
+        img = [read_image(i) for i in imgpath]
     else:
         img = imgpath
 

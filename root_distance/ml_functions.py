@@ -90,30 +90,6 @@ def findepochnumber(weigthfiles, index, strepochref = 'epoch', stopepochstr ='-l
   return np.array([int(i[(i.index(strepochref)+5):(i.index(stopepochstr))]) for i in flindex]), flindex
 
 
-
-
-def shrink_to_root(img, perc = 0.2):
-
-    xshape = img.shape[1]
-    yindexsample = random.sample(range(img.shape[0]),int(xshape*.20))
-
-    rootxpos = []
-    for i in yindexsample:
-        pos = np.array(np.where(img[i] == 1)).tolist()
-        if len(pos[0])>1:
-            rootxpos.append(pos)
-
-    
-    posinx = list(itertools.chain.from_iterable(rootxpos))
-
-    avxposition = np.nanmean(np.array(posinx[0]))
-
-    minclip = int(avxposition - int(xshape*perc))
-    maxclip = int(avxposition + int(xshape*perc))
-
-    return minclip, maxclip
-
-
 def find_best_epoch(folderpath, load_last = False):
     tfiles = os.listdir(folderpath)
     last_epoch = 0
@@ -189,7 +165,7 @@ class root_detector(object):
         print("checkpoint load {}".format(self.bestmodel))
 
         self.model.load_weights(self.bestmodel)
-        print(self._last_epoch)
+        
           
       else:
         print("it was not possible to load weights **********")
@@ -200,15 +176,20 @@ class root_detector(object):
 
         self._imgc, self.img_shape = check_dims(img, referenceshape = self.inputshape)
 
-        xtest = np.expand_dims(self._imgc, axis = 0)
+        
+        #xtest = np.expand_dims(self._imgc, axis = 0)
+        xtest = self._imgc.copy()
+        if len(xtest.shape) == 3:
+            xtest = np.expand_dims(self._imgc, axis = 0)
 
         predicitionimg = self.model.predict(xtest/255.)
         predicitionimg[predicitionimg<threshhold] = 0
         predicitionimg[predicitionimg>=threshhold] = 1
         
         self._root_image, _ = check_dims(predicitionimg, referenceshape = self.img_shape)
+        
         #self.root_image = predicitionimg
-        self._root_image = np.squeeze(self._root_image[0], axis = 2)
+        self._root_image = np.squeeze(self._root_image, axis = 3)
         return self._root_image
 
 

@@ -8,6 +8,28 @@ import math
 from root_distance.general_functions import *
 from root_distance.ml_functions import *
 
+def shrink_to_root(img, perc = 0.2):
+
+    xshape = img.shape[0]
+    yindexsample = random.sample(range(img.shape[0]),int(xshape*.20))
+
+    rootxpos = []
+    for i in yindexsample:
+        pos = np.array(np.where(img[i] == 1)).tolist()
+        if len(pos[0])>1:
+            rootxpos.append(pos)
+
+    
+    posinx = list(itertools.chain.from_iterable(rootxpos))
+
+    avxposition = np.nanmean(np.array(posinx[0]))
+
+    minclip = int(avxposition - int(xshape*perc))
+    maxclip = int(avxposition + int(xshape*perc))
+
+    return minclip, maxclip
+
+
 def find_edgebordersinimage(img, yposition):
 
     linedata = img[(int(yposition)-1):(int(yposition)+1),:]
@@ -174,12 +196,44 @@ def distances_table(linescoords):
                         'distances_pixels': distancespx, 
                         'distances_microns': distances, 'corrected_factor': factorcorrection})
 
+def draw_lines_and_circles(image, rootimage, pillars_coords, radious, 
+                            rootlines, pillarslines,
+                            pillars_color = (0, 153, 153), root_lines_color = (255, 102, 0)):
+    
+    rootimagecliped = rootimage
+    heatmap = cv2.applyColorMap((rootimagecliped*255).astype(np.uint8), cv2.COLORMAP_PLASMA)
+    output = cv2.addWeighted((image).astype(np.uint8), 0.5, heatmap.astype(np.uint8), 1 - 0.75, 0)
+
+    image = draw_circles(output, pillars_coords, radious, color_circle=pillars_color,  label = False)
+
+    middlex = int(rootimagecliped.shape[1]/2)
+    image = draw_lines(image, rootlines, color_line= root_lines_color, numberxpos = middlex)
+    image = draw_lines(image, pillarslines, color_line=pillars_color, numberxpos = middlex)
+
+    return image
+
+def export_images(list_images, folder = None, filenames = None, preffix = '.jpg'):
+
+    if not os.path.exists(folder):
+        os.mkdir(folder)
+    if filenames is None:
+        filenames = ['image_{}{}'.format(i, preffix) for i in range(len(list_images))]
+
+    for i,img in enumerate(list_images):
+        cv2.imwrite(os.path.join(folder, filenames[i]), img)
+
 
 class RootonPillars():
 
     @property
     def image(self):
-        return read_image(self.img_path).copy()
+        imageinfo = read_image(self.img_path)
+        
+        if len(np.array(imageinfo).shape) == 3:
+            imageinfo = np.expand_dims(np.array(imageinfo), axis= 0)
+
+        
+        return np.array(imageinfo)
     
     @property
     def root_image(self):
@@ -189,94 +243,184 @@ class RootonPillars():
     @property
     def pillars_coords(self):
 
-        circle_coordsaslist = [] 
+        coordslist = []
+        
+        for j in range(len(self._filteredpillars_coords)):
+            circle_coordsaslist = [] 
+            for i in self._filteredpillars_coords[j]:
+                circle_coordsaslist.append(self._filteredpillars_coords[j][i][0])
+                circle_coordsaslist.append(self._filteredpillars_coords[j][i][1])
 
-        for i in self._filteredpillars_coords:
-            circle_coordsaslist.append(self._filteredpillars_coords[i][0])
-            circle_coordsaslist.append(self._filteredpillars_coords[i][1])
+            coordslist.append(circle_coordsaslist)
 
-        return circle_coordsaslist
+        return coordslist
 
     @property
     def root_intersectionlines(self):
-        return lines_through_root_middle(self._filteredpillars_coords, 
-                                         self.root_image[:,self._minposx:self._maxposx])
+        lineslist = []
+        for i in range(len(self._filteredpillars_coords)):
+            lineslist.append(lines_through_root_middle(
+                                         self._filteredpillars_coords[i], 
+                                         self.root_image[i][:,self._minposx[i]:self._maxposx[i]]))
+        return lineslist
 
     @property
     def pillars_intersectionlines(self):
+        lineslist = []
+        for i in range(len(self._filteredpillars_coords)):
+            lineslist.append(get_pillars_lines(self._filteredpillars_coords[i]))
 
-        return get_pillars_lines(self._filteredpillars_coords)
+        return lineslist
     
     @property
     def pillars_lines_as_table(self):
-        df = distances_table(self.pillars_intersectionlines)
-        df['object'] = 'pillars'
+        dflist = []
+        for i in range(len(self.pillars_intersectionlines)):
+            df = distances_table(self.pillars_intersectionlines[i])
+            df['object'] = 'pillars'
+            df['image_name'] = self.image_names[i]
+            dflist.append(df)
 
-        return df
+        return pd.concat(dflist).reset_index()
     
     @property
     def root_lines_as_table(self):
-        df = distances_table(self.root_intersectionlines)
-        df['object'] = 'root'
+        dflist = []
+        for i in range(len(self.root_intersectionlines)):
+            df = distances_table(self.root_intersectionlines[i])
+            df['object'] = 'root'
+            df['image_name'] = self.image_names[i]
+            dflist.append(df)
 
-        return df
+        return pd.concat(dflist).reset_index()
+
+    def export_final_images(self, path):
+        
+        export_images(self._get_final_images(), 
+                      path, 
+                      self.image_names)
+
+
 
     def _get_pillarsrawcoords(self):
 
-        pillars = PillarImage(self.image[:,self._minposx:self._maxposx,:],
+        pillars_coords = {}
+        radious = []
+        for i in range(self.image.shape[0]):
+            
+            pillars = PillarImage(self.image[i,:,self._minposx[i]:self._maxposx[i],:],
                               minradius = self.minradius, 
                               maxradius = self.maxradius, 
                               max_circles= self.max_circles)
-        pillars.find_circles()
-        pillars.sort_circles()
+            
+            pillars.find_circles()
+            pillars.sort_circles()
 
-        self._raw_pillars_coords = pillars.circle_coords
-        self.radious = np.nanmean(np.array(self._raw_pillars_coords).T[2])
+            pillars_coords[i] = pillars.circle_coords
+            radious.append(np.nanmean(np.array(pillars_coords[i]).T[2]))
+            
+        self._raw_pillars_coords = pillars_coords
+        self.radious = radious
 
     def _filtered_coords(self):
+        
+        pillars_coords = {}
+        
+        for i in range(len(self._raw_pillars_coords.keys())):
+            coords_filtered, warningmessage = circles_thatedge_root(self._raw_pillars_coords[i],
+                                                                self.root_image[i,:,self._minposx[i]:self._maxposx[i]], 
+                                                                self.radious[i])
+            pillars_coords[i] = coords_filtered
+
+        #self._warning_message  = warningmessage
+        self._filteredpillars_coords = pillars_coords
+
+    def lines_table_as_csv(self, filename):
+
+        pd.concat([self.root_lines_as_table,self.pillars_lines_as_table]).to_csv(filename)
+
+    def plot_root_overlapped(self, maximages = None, figsize = (8,12)):
+
+        if maximages is None:
+            maximages = self.root_image.shape[0]
+        
+        fig, ax = plt.subplots(ncols=1, nrows= maximages, figsize =figsize)
+        
+        for i in range(self.root_image.shape[0]):
+
+            heatmap = cv2.applyColorMap((self.root_image[i]*255).astype(np.uint8), cv2.COLORMAP_PLASMA)
+            output = cv2.addWeighted((self.image[i]).astype(np.uint8), 0.5, heatmap.astype(np.uint8), 1 - 0.75, 0)
+            if maximages>1:
+                ax[i].imshow(output)
+            else:
+                ax.imshow(output)
+        
+
+    def _get_final_images(self, pillars_color = (0, 153, 153), root_lines_color = (255, 102, 0)):
+        imagestoplot = []
+
+        for i in range(self.image.shape[0]):
+            imagestoplot.append(draw_lines_and_circles(self.image[i][:,self._minposx[i]:self._maxposx[i],:].copy(),
+                                   self.root_image[i][:,self._minposx[i]:self._maxposx[i]].copy(),
+                                   self.pillars_coords[i],
+                                   self.radious[i],
+                                   self.root_intersectionlines[i],
+                                   self.pillars_intersectionlines[i],
+                                   pillars_color = pillars_color, root_lines_color = root_lines_color))
+        
+        return imagestoplot
+
+    def plot_final_layer(self, ncols = 1, nrows = 1, maximages = None, pillars_color = (0, 153, 153), root_lines_color = (255, 102, 0), figsize = (8,8)):
+        
+        imagestoplot = self._get_final_images(pillars_color = pillars_color, root_lines_color = root_lines_color)
+        if maximages is None:
+            maximages = self.root_image.shape[0]
+            nrows= maximages
+        
+        fig, ax = plt.subplots(ncols=ncols, nrows=nrows, figsize =figsize, dpi = 80)
+        for i in range(self.image.shape[0]):
+            if i <= maximages:
+                if maximages>1:
+                    ax[i].imshow(imagestoplot[i])
+
+                else:
+                    ax.imshow(imagestoplot[i])
 
         
-        coords_filtered, warningmessage = circles_thatedge_root(self._raw_pillars_coords,
-                                                                self.root_image[:,self._minposx:self._maxposx], 
-                                                                self.radious)
-        self._warning_message  = warningmessage
-        self._filteredpillars_coords = coords_filtered
-
-
-    def plot_root_overlapped(self):
-
-        heatmap = cv2.applyColorMap((self.root_image*255).astype(np.uint8), cv2.COLORMAP_PLASMA)
-        output = cv2.addWeighted((self.image).astype(np.uint8), 0.5, heatmap.astype(np.uint8), 1 - 0.75, 0)
-        plt.imshow(output)
+    
+    def _dic_root_xlocation(self):
+        minposx = [0] * len(self._root_image)
+        maxposx = [0] * len(self._root_image)
+        for i in range(len(self._root_image)):
+            minposx[i], maxposx[i] = shrink_to_root(self.root_image[i],perc=0.17)
         
-    def plot_final_layer(self, pillars_color = (0, 153, 153), root_lines_color = (255, 102, 0), figsize = (8,8)):
-        image = self.image[:,self._minposx:self._maxposx,:].copy()
-        rootimagecliped = self.root_image[:,self._minposx:self._maxposx].copy()
-        heatmap = cv2.applyColorMap((rootimagecliped*255).astype(np.uint8), cv2.COLORMAP_PLASMA)
-        output = cv2.addWeighted((image).astype(np.uint8), 0.5, heatmap.astype(np.uint8), 1 - 0.75, 0)
+        self._minposx = minposx
+        self._maxposx = maxposx
 
-        image = draw_circles(output, self.pillars_coords, self.radious, color_circle=pillars_color,  label = False)
 
-        middlex = int(rootimagecliped.shape[1]/2)
-        image = draw_lines(image, self.root_intersectionlines, color_line= root_lines_color, numberxpos = middlex)
-        image = draw_lines(image, self.pillars_intersectionlines, color_line=pillars_color, numberxpos = middlex)
-
-        fig, ax = plt.subplots(ncols = 1,nrows = 1, figsize=figsize, dpi=80)
-        ax.imshow( image)
-        
     def __init__(self, image_path, weigths_path=None, architecture="vgg16",
                  minradius = 17, maxradius = 18, max_circles= 18):
         
+        self.image_names = None
         self.img_path = image_path
         self.minradius = minradius
         self.maxradius = maxradius
         self.max_circles = max_circles
 
 
-        detector = root_detector(weigths_path, architecture = architecture)
-        self._root_image = detector.detect_root(self.image)
+        self.image_names =get_filenames(self.img_path)
+        if type(self.image_names) is str:
+            self.image_names = [self.image_names]
 
-        self._minposx, self._maxposx = shrink_to_root(self.root_image,perc=0.17)
+        detector = root_detector(weigths_path, architecture = architecture)
+
+        if type(self.image) is list:
+            self._root_image = detector.detect_root(np.concatenate(self.image, axis=0))
+        else:
+            self._root_image = detector.detect_root(self.image)
+
+        
+        self._dic_root_xlocation()
 
         #pillars = PillarImage(self.image[:,self._minposx:self._maxposx,:],minradius = minradius, maxradius = maxradius, max_circles= max_circles)
         self._get_pillarsrawcoords()
