@@ -133,7 +133,7 @@ def add_line_ontop(firstcircle_coords, root_image):
   firstcircle_rad = np.mean(np.array(firstcircle_coords).T[2])
   ## calculate a y coordinate intersection reference
   yintersect = ycircle-int((firstcircle_rad*1.5))
-  print(yintersect)
+  
   ## check if the inteserction is inside the image
   yintersect = yintersect if yintersect > 0 else int(firstcircle_rad*0.5)
 
