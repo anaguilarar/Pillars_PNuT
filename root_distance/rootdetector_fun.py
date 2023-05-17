@@ -126,8 +126,34 @@ def circles_thatedge_root(coords, root_image, radious):
 
     return finalcoords, anomaly
 
-def lines_through_root_middle(circle_coords, root_image):
+def add_line_ontop(firstcircle_coords, root_image):
+  ## get y coordinate
+  ycircle = np.mean(np.array(firstcircle_coords).T[1])
+  ## get circle radious
+  firstcircle_rad = np.mean(np.array(firstcircle_coords).T[2])
+  ## calculate a y coordinate intersection reference
+  yintersect = ycircle-int((firstcircle_rad*1.5))
+  print(yintersect)
+  ## check if the inteserction is inside the image
+  yintersect = yintersect if yintersect > 0 else int(firstcircle_rad*0.5)
 
+  # find borders
+  xminval, xmaxval = find_edgebordersinimage(root_image, int(yintersect))
+  # return line coordinates
+  return ((xminval, int(yintersect)), (xmaxval, int(yintersect)))
+
+
+def lines_through_root_middle(circle_coords, root_image):
+    """
+    function to find the lines coordinates that are used to measure root width
+
+    Args:
+        circle_coords (list of numpy 1D array): pillars coordinates
+        root_image (numpy 2D array): root mask image
+
+    Returns:
+        list: lines coordinates
+    """
     linescoords = []
     maxval = np.max([int(i) for i in circle_coords.keys()])+1
     for count in range(maxval):
@@ -223,7 +249,29 @@ def export_images(list_images, folder = None, filenames = None, preffix = '.jpg'
         cv2.imwrite(os.path.join(folder, filenames[i]), img)
 
 
-class RootonPillars():
+class RootandPillars(object):
+    
+    """
+    a class to detect the root and pillars position in an image
+    
+    ...
+    Attributes
+    ----------
+    
+    image: a list of numpy 2D array
+        display all images information
+    root_image: numpy 3D array 
+        display the root masks
+    pillars_coords: list of numpy 1D array
+        contains each coordinates position (X and Y) and the circle radious (pixel)
+    root_intersectionlines: list
+        lines coordinates that are used to measured the root width
+    pillars_intersectionlines: list
+        lines coordinates that are used to measured the pillars separation
+        
+    Returns:
+        _type_: _description_
+    """
 
     @property
     def image(self):
@@ -259,9 +307,22 @@ class RootonPillars():
     def root_intersectionlines(self):
         lineslist = []
         for i in range(len(self._filteredpillars_coords)):
-            lineslist.append(lines_through_root_middle(
-                                         self._filteredpillars_coords[i], 
-                                         self.root_image[i][:,self._minposx[i]:self._maxposx[i]]))
+
+            rootmaskimg = self.root_image[i][:,self._minposx[i]:self._maxposx[i]]
+            pillarscoords = self._filteredpillars_coords[i]
+
+            if len(list(pillarscoords.keys()))>0:
+                firstpillar = pillarscoords[list(pillarscoords.keys())[0]] 
+                firstline = add_line_ontop(firstpillar, 
+                                rootmaskimg)
+                
+                linesinsigleimg = lines_through_root_middle(
+                                                pillarscoords, 
+                                                rootmaskimg)
+                
+                
+                lineslist.append([firstline]+linesinsigleimg)
+                
         return lineslist
 
     @property
@@ -370,24 +431,37 @@ class RootonPillars():
         
         return imagestoplot
 
-    def plot_final_layer(self, ncols = 1, nrows = 1, maximages = None, pillars_color = (0, 153, 153), root_lines_color = (255, 102, 0), figsize = (8,8)):
-        
+    def plot_final_layer(self, maximages = None, pillars_color = (0, 153, 153), root_lines_color = (255, 102, 0), figsize = (8,8)):
+        """
+        function to plot the detected root and pillars 
+
+        Args:
+            maximages (int, optional): a muximun number of images to be plotted. Defaults to None.
+            pillars_color (tuple, optional): which color (rgb) will be used to plot the pillar. Defaults to (0, 153, 153).
+            root_lines_color (tuple, optional): which color (rgb) will be used to fill the root. Defaults to (255, 102, 0).
+            figsize (tuple, optional): figure size. Defaults to (8,8).
+
+        Returns:
+            matplotlib plot: plot
+        """
         imagestoplot = self._get_final_images(pillars_color = pillars_color, root_lines_color = root_lines_color)
         if maximages is None:
-            maximages = self.root_image.shape[0]
-            nrows= maximages
+            nrows= self.root_image.shape[0]
+            
+        else:
+            nrows = maximages
         
-        fig, ax = plt.subplots(ncols=ncols, nrows=nrows, figsize =figsize, dpi = 80)
-        for i in range(self.image.shape[0]):
-            if i <= maximages:
-                if maximages>1:
-                    ax[i].imshow(imagestoplot[i])
-
-                else:
-                    ax.imshow(imagestoplot[i])
-
+        fig, ax = plt.subplots(ncols=1, nrows=nrows, figsize =figsize, dpi = 80)
+        i = 0
+        while i < nrows:
+            if maximages>1:
+                ax[i].imshow(imagestoplot[i])
+            else:
+                ax.imshow(imagestoplot[i])
+            i +=1
         
-    
+        return fig
+            
     def _dic_root_xlocation(self):
         minposx = [0] * len(self._root_image)
         maxposx = [0] * len(self._root_image)
@@ -398,8 +472,24 @@ class RootonPillars():
         self._maxposx = maxposx
 
 
-    def __init__(self, image_path, weigths_path=None, architecture="vgg16",
-                 minradius = 17, maxradius = 18, max_circles= 18):
+    def __init__(self, imagery_path, weigths_path=None, architecture="vgg16",
+                 minradius = 17, maxradius = 18, max_circles= 18, imgsuffix = '.jpg'):
+        
+        """
+        class initialization
+        
+        Args:
+            imagery_path (str): directory path that contains the images.
+            weigths_path (str, optional): directory path that contains the segmentation model weights. Defaults None.
+            architecture (str, optional): segmentation model name. Defaults to vgg16.
+            minradius (int, optional): minimun circle radious in pixels. Defaults to 17.
+            maxradius (int, optional): maximun circle radious in pixels. Defaults to 18.
+            max_circles (int, optional): maximun number of pillars around the root. Defaults to 18.
+            imgsuffix (str, optional): images extension. Defaults to .jpg.
+
+        """
+        
+        image_path = [os.path.join(imagery_path,i) for i in os.listdir(imagery_path) if i.endswith(imgsuffix)]
         
         self.image_names = None
         self.img_path = image_path

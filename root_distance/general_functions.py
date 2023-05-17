@@ -267,7 +267,11 @@ def read_image(imgpath):
     return img
 
 class PillarImage:
-    
+    """
+
+    Returns:
+        _type_: _description_
+    """
     @property
     def img_data(self):
         return read_image(self.img_path)
