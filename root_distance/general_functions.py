@@ -199,30 +199,37 @@ def get_lines_coordinates(img):
 def draw_lines(img, linescoords, numberxpos, color_line = (0,255,0) ):
     count = 0
     for p1,p2 in linescoords:
-        cv2.line(img,(int(p1[0]),int(p1[1])), (int(p2[0]),int(p2[1])), color_line,2)
-        pminy = p2[1] if p2[1]<p1[1] else p1[1]
-        cv2.putText(img, str(count+1), (int(numberxpos), int(pminy-4)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                            color_line, 1)
+        try:
+            cv2.line(img,(int(p1[0]),int(p1[1])), (int(p2[0]),int(p2[1])), color_line,2)
+            pminy = p2[1] if p2[1]<p1[1] else p1[1]
+            cv2.putText(img, str(count+1), (int(numberxpos), int(pminy-4)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                                color_line, 1)
 
-        count +=1
+            count +=1
+        except:
+            pass
 
     return img
 
 def draw_circles(img, circles_coords,radious, label = True, color_circle = (0, 255, 0)):
     circles_coords = np.uint16(np.around(circles_coords))
     for i, pt in enumerate(circles_coords):
-        a, b, r = pt[0], pt[1], math.ceil(radious)
+        try:
+            
+            a, b, r = pt[0], pt[1], math.ceil(radious)
 
-        # Draw the circumference of the circle.
-        cv2.circle(img, (a, b), r, color_circle, 2)
+            # Draw the circumference of the circle.
+            cv2.circle(img, (a, b), r, color_circle, 2)
 
-        cv2.circle(img, (a, b), 1, (0, 0, 255), 3)
-        if label:
-            cv2.putText(img, str(i+1), (a - int(r/2), b - int(r/2)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                        color_circle, 2)
-        
+            cv2.circle(img, (a, b), 1, (0, 0, 255), 3)
+            if label:
+                cv2.putText(img, str(i+1), (a - int(r/2), b - int(r/2)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                            color_circle, 2)
+        except:
+            pass
+            
     return img
     
 def change_img_contrast(image, alpha = 3,beta = 50  ):

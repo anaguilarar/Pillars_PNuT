@@ -142,6 +142,21 @@ def add_line_ontop(firstcircle_coords, root_image):
   # return line coordinates
   return ((xminval, int(yintersect)), (xmaxval, int(yintersect)))
 
+def add_line_onbottom(lastcircle_coords, root_image):
+  ## get y coordinate
+  ycircle = np.mean(np.array(lastcircle_coords).T[1])
+  ## get circle radious
+  lastcircle_rad = np.mean(np.array(lastcircle_coords).T[2])
+  ## calculate a y coordinate intersection reference
+  yintersect = ycircle+int((lastcircle_rad*1.5))
+  bottom = root_image.shape[0]
+  ## check if the inteserction is inside the image
+  yintersect = yintersect if yintersect < bottom else bottom-int(lastcircle_rad*0.5)
+
+  # find borders
+  xminval, xmaxval = find_edgebordersinimage(root_image, int(yintersect))
+  # return line coordinates
+  return ((xminval, int(yintersect)), (xmaxval, int(yintersect)))
 
 def lines_through_root_middle(circle_coords, root_image):
     """
@@ -312,7 +327,8 @@ class RootandPillars(object):
             pillarscoords = self._filteredpillars_coords[i]
 
             if len(list(pillarscoords.keys()))>0:
-                firstpillar = pillarscoords[list(pillarscoords.keys())[0]] 
+                firstpillar = pillarscoords[list(pillarscoords.keys())[0]]
+                
                 firstline = add_line_ontop(firstpillar, 
                                 rootmaskimg)
                 
@@ -320,8 +336,20 @@ class RootandPillars(object):
                                                 pillarscoords, 
                                                 rootmaskimg)
                 
+                if not np.isnan(firstline[0][0]):
+                    lou = [firstline]+linesinsigleimg
+                else:
+                    lou = linesinsigleimg
                 
-                lineslist.append([firstline]+linesinsigleimg)
+                lastpillar = pillarscoords[list(pillarscoords.keys())[-1]]
+                
+                lastline = add_line_onbottom(lastpillar, 
+                                rootmaskimg)
+                
+                if not np.isnan(lastline[0][0]):
+                    lou = lou+[lastline]
+                
+                lineslist.append(lou)
                 
         return lineslist
 
