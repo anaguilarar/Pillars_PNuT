@@ -109,7 +109,8 @@ def circles_thatedge_root(coords, root_image, radious):
         
         ycoord, _ = find_miny(dict_coords)
         posindict = find_circlesinframe(dict_coords, ycoord, radious)
-        circlecoords, posindict, wrongcircle = musttouchroot_filter(dict_coords, posindict ,root_image, radious = radious)
+        circlecoords, posindict, wrongcircle = musttouchroot_filter(
+            dict_coords, posindict ,root_image, radious = radious)
 
 
         for i in posindict + wrongcircle:
@@ -220,15 +221,15 @@ def get_pillars_lines(coords):
     return pillarslines
 
 
-def distances_table(linescoords):
+def distances_table(linescoords,scale_factor = 0.4023):
     distancespx = []
     distances = []
     factorcorrection= []
     count = []
-    changefactor = 0.4023
+    
     for i, (p1,p2) in enumerate(linescoords):
         distancespx.append(euc_distance(p1,p2))
-        d = euc_distance(p1,p2)/changefactor
+        d = euc_distance(p1,p2)/scale_factor
         distances.append(d)
         factorcorrection.append((d- 260)/2)
         count.append(i+1)
@@ -291,7 +292,6 @@ class RootandPillars(object):
     @property
     def image(self):
         imageinfo = read_image(self.img_path)
-        
         if len(np.array(imageinfo).shape) == 3:
             imageinfo = np.expand_dims(np.array(imageinfo), axis= 0)
 
@@ -365,7 +365,7 @@ class RootandPillars(object):
     def pillars_lines_as_table(self):
         dflist = []
         for i in range(len(self.pillars_intersectionlines)):
-            df = distances_table(self.pillars_intersectionlines[i])
+            df = distances_table(self.pillars_intersectionlines[i], self.scale_factor)
             df['object'] = 'pillars'
             df['image_name'] = self.image_names[i]
             dflist.append(df)
@@ -402,10 +402,11 @@ class RootandPillars(object):
                               maxradius = self.maxradius, 
                               max_circles= self.max_circles)
             
-            pillars.find_circles()
+            pillars.find_circles(findlines = False)
             pillars.sort_circles()
 
-            pillars_coords[i] = pillars.circle_coords
+            pillars_coords[i] = mergecoords(pillars.circle_coords.copy(),pillars.radious)
+            print(f"{len(pillars_coords[i])} pillars were found")
             radious.append(np.nanmean(np.array(pillars_coords[i]).T[2]))
             
         self._raw_pillars_coords = pillars_coords
@@ -416,7 +417,7 @@ class RootandPillars(object):
         pillars_coords = {}
         
         for i in range(len(self._raw_pillars_coords.keys())):
-            coords_filtered, warningmessage = circles_thatedge_root(self._raw_pillars_coords[i],
+            coords_filtered, _ = circles_thatedge_root(self._raw_pillars_coords[i],
                                                                 self.root_image[i,:,self._minposx[i]:self._maxposx[i]], 
                                                                 self.radious[i])
             pillars_coords[i] = coords_filtered
@@ -490,18 +491,21 @@ class RootandPillars(object):
         
         return fig
             
-    def _dic_root_xlocation(self):
+    def _dic_root_xlocation(self, perc = 0.17):
         minposx = [0] * len(self._root_image)
         maxposx = [0] * len(self._root_image)
         for i in range(len(self._root_image)):
-            minposx[i], maxposx[i] = shrink_to_root(self.root_image[i],perc=0.17)
+            minposx[i], maxposx[i] = shrink_to_root(self.root_image[i],perc=perc)
         
         self._minposx = minposx
         self._maxposx = maxposx
 
-
+    def classify_image(self):
+        pass
+    
     def __init__(self, imagery_path, weigths_path=None, architecture="vgg16",
-                 minradius = 17, maxradius = 18, max_circles= 18, imgsuffix = '.jpg'):
+                 scale_factor = 0.4023,
+                 minradius = 17, maxradius = 18, max_pillars_around_root= 18,imgsuffix = '.jpg'):
         
         """
         class initialization
@@ -517,15 +521,26 @@ class RootandPillars(object):
 
         """
         
+        #conf_detection
+        
         image_path = [os.path.join(imagery_path,i) for i in os.listdir(imagery_path) if i.endswith(imgsuffix)]
         
         self.image_names = None
         self.img_path = image_path
         self.minradius = minradius
         self.maxradius = maxradius
-        self.max_circles = max_circles
+        self.max_circles = max_pillars_around_root+2
+        perc = 0.17
+        self.scale_factor = scale_factor
+        if self.max_circles == 22:
+            self.minradius = 13
+            self.maxradius = 14
+            perc = 0.12
 
-
+        if self.max_circles == 18:
+            self.minradius = 17
+            self.maxradius = 18
+            
         self.image_names =get_filenames(self.img_path)
         if type(self.image_names) is str:
             self.image_names = [self.image_names]
@@ -538,8 +553,8 @@ class RootandPillars(object):
             self._root_image = detector.detect_root(self.image)
 
         
-        self._dic_root_xlocation()
+        self._dic_root_xlocation(perc = perc)
 
-        #pillars = PillarImage(self.image[:,self._minposx:self._maxposx,:],minradius = minradius, maxradius = maxradius, max_circles= max_circles)
+        
         self._get_pillarsrawcoords()
         self._filtered_coords()

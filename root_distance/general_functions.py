@@ -9,14 +9,66 @@ import pandas as pd
 import os
 
 def check_dims(image, referenceshape):
-    originalshape = image.shape[:2]
-    if originalshape[0] != referenceshape[0] and originalshape[1] != referenceshape[1]:
-        img_resized = cv2.resize(image.copy(), referenceshape, interpolation = cv2.INTER_AREA)
+    imshape = image.shape[:2]
+    if imshape[0] != referenceshape[0] or imshape[1] != referenceshape[1]:
+        if len(image.shape) == 4:
+            img_resize = []
+            for i in range(image.shape[0]):
+                img_resize.append(cv2.resize(image[i], 
+                                             referenceshape, 
+                                            interpolation = cv2.INTER_AREA))
+            img_resized = np.array(img_resize)
+        else:
+           img_resized = cv2.resize(image, 
+                                             referenceshape, 
+                                            interpolation = cv2.INTER_AREA)
     else:
         img_resized = image.copy()
 
-    return img_resized, originalshape
+    return img_resized
 
+
+def mergecoords(circle_coords, radious):
+    """average the coords calculated from each image
+
+    Args:
+        circle_coords (_type_): _description_
+        radious (_type_): _description_
+    """
+
+    keysnames = list(circle_coords.keys())
+    ## find which has more pillars
+    pos = np.argmax([len(circle_coords[feat]) for feat in keysnames])
+    keymax = list(circle_coords.keys())[pos]
+    repillars = circle_coords[keymax]
+    otherslist = list(range(len(keysnames)))
+    otherslist.pop(pos)
+    refrad = radious
+    defpillars = []
+    for refpillar in repillars:
+        candidates = []
+        for i in otherslist:
+            j = 0
+            #print(keysnames[i]," ",len(circle_coords[keysnames[i]]))
+            reflist = circle_coords[keysnames[i]].copy()
+            
+            while len(reflist)>1 and j < len(reflist):
+
+                pillartwo = reflist[j]
+                dist = euc_distance((refpillar[0],refpillar[1]),
+                                    (pillartwo[0],pillartwo[1]))
+                if dist < refrad:
+                    candidates.append(pillartwo )
+                    reflist.pop(j)
+                    j = 0
+                    break
+                else:
+                    j += 1
+                    
+        candidates.append(refpillar)
+        defpillars.append(np.mean(np.array(candidates).T, axis = 1))
+
+    return defpillars
 
 def get_seppillarsdistances(img):
     distances = []
@@ -260,10 +312,11 @@ def get_filenames(imgpath, suffix = 'jpg'):
     return fn
 
 
-def read_image(imgpath):
+def read_image(imgpath, ref = (512,512)):
     if type(imgpath) is str:
         if os.path.exists(imgpath):
             img = cv2.imread(imgpath)
+            img = check_dims(img,ref)
         else: 
             raise ValueError("the file does not exist")
     elif type(imgpath) is list:
@@ -279,6 +332,8 @@ class PillarImage:
     Returns:
         _type_: _description_
     """
+
+    
     @property
     def img_data(self):
         return read_image(self.img_path)
@@ -317,6 +372,7 @@ class PillarImage:
 
 
     def _organizing_distperrow(self):
+        
         origdist = self.circle_coords.copy()
         eucsdist = []
         coords_sortedperrow = []
@@ -391,16 +447,24 @@ class PillarImage:
 
         return [0,math.ceil(ymaxval)],[math.floor(xminval),math.ceil(xmaxval)]
 
-    def get_distances_table(self):
+    def get_distances_table(self, scalefactor = 0.4023):
+        """data table with all distances
+
+        Args:
+            scalefactor (float, optional): scale factor to transform from pixel to micrometer. Defaults to 0.4023.
+
+        Returns:
+            pandas: dataframe
+        """
         linescoords = get_lines_coordinates(self)
         distancespx = []
         distances = []
         factorcorrection= []
         count = []
-        changefactor = 0.4023
+        #changefactor = 0.4023
         for i, (p1,p2) in enumerate(linescoords):
             distancespx.append(euc_distance(p1,p2))
-            d = euc_distance(p1,p2)/changefactor
+            d = euc_distance(p1,p2)/scalefactor
             distances.append(d)
             factorcorrection.append((d- 260)/2)
             count.append(i+1)
@@ -409,10 +473,13 @@ class PillarImage:
                          'distances_pixels': distancespx, 
                          'distances_microns': distances, 'corrected_factor': factorcorrection})
 
-    def find_circles(self, **kwargs):
-
+    def find_circles(self, findlines = False,**kwargs):
+        """finf pillars on image
+        """
 
         circlesmax = []
+        self._pillarsforimg = {}
+        radiouslist = []
         for i in self._dict.keys():
             circles,radious = get_circles(self._dict[i],
                                           minradius=  self._minradquery, 
@@ -421,14 +488,23 @@ class PillarImage:
             #print(len(circles[0]))
             if len(circlesmax)<len(circles[0]):
                 circlesmax = circles[0]
-        print(f"{len(circlesmax)} circles were found")
+            self._pillarsforimg[i] = circles[0]
+            radiouslist.append(radious)
+        
         self.circle_coords = circlesmax
-        self.radious = radious
-        self._organizing_distperrow()
+        self.radious = np.mean(radiouslist)
+        if findlines:
+            self._organizing_distperrow() ## not necesary
 
     def sort_circles(self):
-        self.circle_coords, self._ncolumnsperrow = organized_circles(self.circle_coords, self.radious)
+        pillarscoords = {}
+        ncolumnperrow = {}
+        for i in self._pillarsforimg.keys():
+            pillarscoords[i], ncolumnperrow[i] = organized_circles(
+                self._pillarsforimg[i], self.radious)
 
+        self.circle_coords = pillarscoords
+        self._ncolumnsperrow = ncolumnperrow
     def __init__(self,
                  img_path = None,
                  gray = True,

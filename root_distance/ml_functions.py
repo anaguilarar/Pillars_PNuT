@@ -173,24 +173,27 @@ class root_detector(object):
 
 
     def detect_root(self,img, threshhold = 0.3):
-
-        self._imgc, self.img_shape = check_dims(img, referenceshape = self.inputshape)
-
+        ## DxHxWxC
+        if len(img.shape) == 4:
+            imgorigshape = (img.shape[1],img.shape[2])
+        else:
+            ## HxWxC
+            imgorigshape = (img.shape[0],img.shape[1])
+        imgc = check_dims(img, referenceshape = self.inputshape)
         
-        #xtest = np.expand_dims(self._imgc, axis = 0)
-        xtest = self._imgc.copy()
-        if len(xtest.shape) == 3:
-            xtest = np.expand_dims(self._imgc, axis = 0)
+        if len(imgc.shape) == 3:
+            imgc = np.expand_dims(imgc, axis = 0)
 
-        predicitionimg = self.model.predict(xtest/255.)
+        predicitionimg = self.model.predict(imgc/255.)
         predicitionimg[predicitionimg<threshhold] = 0
         predicitionimg[predicitionimg>=threshhold] = 1
         
-        self._root_image, _ = check_dims(predicitionimg, referenceshape = self.img_shape)
+        root_image = check_dims(predicitionimg, referenceshape = imgorigshape)
         
         #self.root_image = predicitionimg
-        self._root_image = np.squeeze(self._root_image, axis = 3)
-        return self._root_image
+        if len(root_image.shape) == 4:          
+            root_image = np.squeeze(root_image, axis = 3)
+        return root_image
 
 
 
