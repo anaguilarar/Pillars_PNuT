@@ -262,7 +262,7 @@ def export_images(list_images, folder = None, filenames = None, preffix = '.jpg'
         filenames = ['image_{}{}'.format(i, preffix) for i in range(len(list_images))]
 
     for i,img in enumerate(list_images):
-        cv2.imwrite(os.path.join(folder, filenames[i]), img)
+        cv2.imwrite(os.path.join(folder, filenames[i]), img[:,:,[2,1,0]])
 
 
 class RootandPillars(object):
@@ -383,14 +383,6 @@ class RootandPillars(object):
 
         return pd.concat(dflist).reset_index()
 
-    def export_final_images(self, path):
-        
-        export_images(self._get_final_images(), 
-                      path, 
-                      self.image_names)
-
-
-
     def _get_pillarsrawcoords(self):
 
         pillars_coords = {}
@@ -459,6 +451,12 @@ class RootandPillars(object):
                                    pillars_color = pillars_color, root_lines_color = root_lines_color))
         
         return imagestoplot
+    
+    def export_final_images(self, path, **kwargs):
+        
+        export_images(self._get_final_images(**kwargs), 
+                      path, 
+                      self.image_names)
 
     def plot_final_layer(self, maximages = None, pillars_color = (0, 153, 153), root_lines_color = (255, 102, 0), figsize = (8,8)):
         """
