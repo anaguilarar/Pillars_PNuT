@@ -442,14 +442,16 @@ class RootandPillars(object):
         imagestoplot = []
 
         for i in range(self.image.shape[0]):
-            imagestoplot.append(draw_lines_and_circles(self.image[i][:,self._minposx[i]:self._maxposx[i],:].copy(),
+            try:
+                imagestoplot.append(draw_lines_and_circles(self.image[i][:,self._minposx[i]:self._maxposx[i],:].copy(),
                                    self.root_image[i][:,self._minposx[i]:self._maxposx[i]].copy(),
                                    self.pillars_coords[i],
                                    self.radious[i],
                                    self.root_intersectionlines[i],
                                    self.pillars_intersectionlines[i],
                                    pillars_color = pillars_color, root_lines_color = root_lines_color))
-        
+            except:
+                pass
         return imagestoplot
     
     def export_final_images(self, path, **kwargs):
