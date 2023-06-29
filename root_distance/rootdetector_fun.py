@@ -376,7 +376,7 @@ class RootandPillars(object):
     def root_lines_as_table(self):
         dflist = []
         for i in range(len(self.root_intersectionlines)):
-            df = distances_table(self.root_intersectionlines[i])
+            df = distances_table(self.root_intersectionlines[i], self.scale_factor)
             df['object'] = 'root'
             df['image_name'] = self.image_names[i]
             dflist.append(df)
