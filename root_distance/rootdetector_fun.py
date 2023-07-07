@@ -264,9 +264,7 @@ def export_images(list_images, folder = None, filenames = None, preffix = '.jpg'
     for i,img in enumerate(list_images):
         cv2.imwrite(os.path.join(folder, filenames[i]), img[:,:,[2,1,0]])
 
-
-class RootandPillars(object):
-    
+class SingleRootandPillarsdetection(object):
     """
     a class to detect the root and pillars position in an image
     
@@ -288,15 +286,6 @@ class RootandPillars(object):
     Returns:
         _type_: _description_
     """
-
-    @property
-    def image(self):
-        imageinfo = read_image(self.img_path)
-        if len(np.array(imageinfo).shape) == 3:
-            imageinfo = np.expand_dims(np.array(imageinfo), axis= 0)
-
-        
-        return np.array(imageinfo)
     
     @property
     def root_image(self):
@@ -361,27 +350,6 @@ class RootandPillars(object):
 
         return lineslist
     
-    @property
-    def pillars_lines_as_table(self):
-        dflist = []
-        for i in range(len(self.pillars_intersectionlines)):
-            df = distances_table(self.pillars_intersectionlines[i], self.scale_factor)
-            df['object'] = 'pillars'
-            df['image_name'] = self.image_names[i]
-            dflist.append(df)
-
-        return pd.concat(dflist).reset_index()
-    
-    @property
-    def root_lines_as_table(self):
-        dflist = []
-        for i in range(len(self.root_intersectionlines)):
-            df = distances_table(self.root_intersectionlines[i], self.scale_factor)
-            df['object'] = 'root'
-            df['image_name'] = self.image_names[i]
-            dflist.append(df)
-
-        return pd.concat(dflist).reset_index()
 
     def _get_pillarsrawcoords(self):
 
@@ -417,10 +385,6 @@ class RootandPillars(object):
         #self._warning_message  = warningmessage
         self._filteredpillars_coords = pillars_coords
 
-    def lines_table_as_csv(self, filename):
-
-        pd.concat([self.root_lines_as_table,self.pillars_lines_as_table]).to_csv(filename)
-
     def plot_root_overlapped(self, maximages = None, figsize = (8,12)):
 
         if maximages is None:
@@ -437,60 +401,7 @@ class RootandPillars(object):
             else:
                 ax.imshow(output)
         
-
-    def _get_final_images(self, pillars_color = (0, 153, 153), root_lines_color = (255, 102, 0)):
-        imagestoplot = []
-
-        for i in range(self.image.shape[0]):
-            try:
-                imagestoplot.append(draw_lines_and_circles(self.image[i][:,self._minposx[i]:self._maxposx[i],:].copy(),
-                                   self.root_image[i][:,self._minposx[i]:self._maxposx[i]].copy(),
-                                   self.pillars_coords[i],
-                                   self.radious[i],
-                                   self.root_intersectionlines[i],
-                                   self.pillars_intersectionlines[i],
-                                   pillars_color = pillars_color, root_lines_color = root_lines_color))
-            except:
-                pass
-        return imagestoplot
-    
-    def export_final_images(self, path, **kwargs):
-        
-        export_images(self._get_final_images(**kwargs), 
-                      path, 
-                      self.image_names)
-
-    def plot_final_layer(self, maximages = None, pillars_color = (0, 153, 153), root_lines_color = (255, 102, 0), figsize = (8,8)):
-        """
-        function to plot the detected root and pillars 
-
-        Args:
-            maximages (int, optional): a muximun number of images to be plotted. Defaults to None.
-            pillars_color (tuple, optional): which color (rgb) will be used to plot the pillar. Defaults to (0, 153, 153).
-            root_lines_color (tuple, optional): which color (rgb) will be used to fill the root. Defaults to (255, 102, 0).
-            figsize (tuple, optional): figure size. Defaults to (8,8).
-
-        Returns:
-            matplotlib plot: plot
-        """
-        imagestoplot = self._get_final_images(pillars_color = pillars_color, root_lines_color = root_lines_color)
-        if maximages is None:
-            nrows= self.root_image.shape[0]
-            
-        else:
-            nrows = maximages
-        
-        fig, ax = plt.subplots(ncols=1, nrows=nrows, figsize =figsize, dpi = 80)
-        i = 0
-        while i < nrows:
-            if maximages>1:
-                ax[i].imshow(imagestoplot[i])
-            else:
-                ax.imshow(imagestoplot[i])
-            i +=1
-        
-        return fig
-            
+           
     def _dic_root_xlocation(self, perc = 0.17):
         minposx = [0] * len(self._root_image)
         maxposx = [0] * len(self._root_image)
@@ -500,12 +411,37 @@ class RootandPillars(object):
         self._minposx = minposx
         self._maxposx = maxposx
 
-    def classify_image(self):
-        pass
+    def _reset(self):
+      #self.root_intersectionline = None
+      #self.pillars_coords = None
+      #self.pillars_intersectionlines = None
+      self.image = None
+      self._minposx = None
+      self._maxposx = None
+
+    def classify_image(self, image_path):
+
+        self._reset()
+        self.image =  read_image(image_path)
+        
+        if len(np.array(self.image).shape) == 3:
+            self.image = np.expand_dims(np.array(self.image), axis= 0)
     
-    def __init__(self, imagery_path, weigths_path=None, architecture="vgg16",
+        if type(self.image) is list:
+            self._root_image = self.detector.detect_root(np.concatenate(self.image, axis=0))
+        else:
+            self._root_image = self.detector.detect_root(self.image)
+        
+        self._dic_root_xlocation(perc = self._root_red_perc)
+        
+        self._get_pillarsrawcoords()
+        self._filtered_coords()
+        
+    def __init__(self, 
+
+                 detector=None,
                  scale_factor = 0.4023,
-                 minradius = 17, maxradius = 18, max_pillars_around_root= 18,imgsuffix = '.jpg'):
+                 minradius = 17, maxradius = 18, max_pillars_around_root= 18):
         
         """
         class initialization
@@ -521,12 +457,6 @@ class RootandPillars(object):
 
         """
         
-        #conf_detection
-        
-        image_path = [os.path.join(imagery_path,i) for i in os.listdir(imagery_path) if i.endswith(imgsuffix)]
-        
-        self.image_names = None
-        self.img_path = image_path
         self.minradius = minradius
         self.maxradius = maxradius
         self.max_circles = max_pillars_around_root+2
@@ -536,25 +466,164 @@ class RootandPillars(object):
             self.minradius = 13
             self.maxradius = 14
             perc = 0.12
-
+        self._root_red_perc = perc
         if self.max_circles == 18:
             self.minradius = 17
             self.maxradius = 18
             
+        self.detector = detector
+        
+
+class RootandPillars(SingleRootandPillarsdetection):
+    def __init__(self, imagery_path, 
+                 weigths_path=None, 
+                 architecture="vgg16", 
+                 scale_factor=0.4023, 
+                 minradius=17, maxradius=18, 
+                 max_pillars_around_root=18, 
+                 imgsuffix='.jpg'):
+        
+        self._already_processed = {}
+        self.image_names = None
+        self.img_path = [os.path.join(imagery_path,i) for i in os.listdir(imagery_path) if i.endswith(imgsuffix)]
+        
         self.image_names =get_filenames(self.img_path)
+        
         if type(self.image_names) is str:
             self.image_names = [self.image_names]
-
+        
         detector = root_detector(weigths_path, architecture = architecture)
+        
+        super().__init__(detector, scale_factor, minradius, maxradius, max_pillars_around_root)
 
-        if type(self.image) is list:
-            self._root_image = detector.detect_root(np.concatenate(self.image, axis=0))
+
+    def lines_as_table(self, linetype="pillar_lines"):
+        dflist = []
+        for img_path in list(self._already_processed.keys()):
+
+            imginfo = self._already_processed[img_path]
+            if imginfo is not None:
+              df = distances_table(imginfo[linetype], self.scale_factor)
+              df['object'] = 'pillar' if linetype == "pillar_lines" else 'root'
+              df['image_name'] = get_filenames(img_path)
+              dflist.append(df)
+
+        if len(dflist)>0:
+          dflist = pd.concat(dflist).reset_index()
+
+        return dflist
+
+    def classify_single_img(self, img_id):
+
+        assert img_id <= len(self.img_path)
+
+        imgpath = self.img_path[img_id]
+        
+        if imgpath not in list(self._already_processed.keys()):
+          try:
+            self.classify_image(imgpath)
+            imgdict = {
+              'root_image': self.root_image[0][:,self._minposx[0]:self._maxposx[0]].copy(),
+              'clipped_image': self.image[0][:,self._minposx[0]:self._maxposx[0],:].copy(),
+              'pillars_coords': self.pillars_coords[0],
+              'radious':self.radious[0],
+              'root_lines':self.root_intersectionlines[0],
+              'pillar_lines':self.pillars_intersectionlines[0]
+            }
+            
+          
+          except:
+            print("***** {} image was not possible to process".format(imgpath))
+            imgdict = None
+          
+          self._already_processed[imgpath] = imgdict
         else:
-            self._root_image = detector.detect_root(self.image)
+          imgdict = self._already_processed[imgpath]
+          
 
-        
-        self._dic_root_xlocation(perc = perc)
+        return imgdict
+    
+    def classify_all_images(self):
+      for i in range(len(self.img_path)):
+        self.classify_single_img(i)
 
+
+    def _get_final_images(self, pillars_color = (0, 153, 153), root_lines_color = (255, 102, 0)):
+        imagestoplot = {}
+        self.classify_all_images()
+
+        for img_path in self.img_path:
+          # check if the image was already processed
+            
+            imginfo = self._already_processed[img_path]
+            #print(imginfo)
+            if imginfo is not None:
+                imagestoplot[img_path] = draw_lines_and_circles(
+                    imginfo["clipped_image"],
+                    imginfo["root_image"],
+                    imginfo["pillars_coords"],
+                    imginfo["radious"],
+                    imginfo["root_lines"],
+                    imginfo["pillar_lines"],
+                    pillars_color = pillars_color, root_lines_color = root_lines_color)
+            
+        return imagestoplot
+
+    def export_final_images(self, path, **kwargs):
         
-        self._get_pillarsrawcoords()
-        self._filtered_coords()
+        imagestoplot = self._get_final_images(**kwargs)
+        image_names= []
+        listimgs = []
+        for img_path in list(imagestoplot.keys()):
+          imginfo = imagestoplot[img_path]
+          if imginfo is not None:
+            listimgs.append(imagestoplot[img_path])
+            image_names.append(get_filenames(img_path))
+
+        export_images(listimgs, 
+                      path, 
+                      self.image_names)
+
+    def export_detection_as_csv(self, filename):
+        self.classify_all_images()
+        rootlines = self.lines_as_table("root_lines")
+        pillarlines = self.lines_as_table("pillar_lines")
+        if len(rootlines)>0:
+          pd.concat([rootlines,pillarlines]).to_csv(filename)
+        else:
+          print("No information was")
+
+    def plot_final_layer(self, maximages = None, pillars_color = (0, 153, 153), root_lines_color = (255, 102, 0), figsize = (8,8)):
+        """
+        function to plot the detected root and pillars 
+
+        Args:
+            maximages (int, optional): a muximun number of images to be plotted. Defaults to None.
+            pillars_color (tuple, optional): which color (rgb) will be used to plot the pillar. Defaults to (0, 153, 153).
+            root_lines_color (tuple, optional): which color (rgb) will be used to fill the root. Defaults to (255, 102, 0).
+            figsize (tuple, optional): figure size. Defaults to (8,8).
+
+        Returns:
+            matplotlib plot: plot
+        """
+        imagestoplot = self._get_final_images(pillars_color = pillars_color, root_lines_color = root_lines_color)
+        processedimgspath = list(imagestoplot.keys())
+
+        if maximages is None:
+            nrows= self.root_image.shape[0]
+            
+        else:
+            nrows = maximages
+        
+        fig, ax = plt.subplots(ncols=1, nrows=nrows, figsize =figsize, dpi = 80)
+        i = 0
+        while i < nrows:
+            if maximages>1:
+                ax[i].imshow(imagestoplot[processedimgspath[i]])
+                ax[i].set_title(processedimgspath[i])
+            else:
+                ax.imshow(imagestoplot[processedimgspath[i]])
+                ax.set_title(processedimgspath[i])
+            i +=1
+        
+        return fig
