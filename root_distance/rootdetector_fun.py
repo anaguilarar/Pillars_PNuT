@@ -582,7 +582,7 @@ class RootandPillars(SingleRootandPillarsdetection):
 
         export_images(listimgs, 
                       path, 
-                      self.image_names)
+                      image_names)
 
     def export_detection_as_csv(self, filename):
         self.classify_all_images()
