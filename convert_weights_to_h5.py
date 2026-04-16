@@ -1,12 +1,11 @@
 """
 One-time script to convert TF checkpoint weights → HDF5 (.h5) format.
 
-Run this in Colab (or any environment with TF 2.8–2.15) once, then upload
-the resulting .h5 file to replace the checkpoint files in your S3 bucket.
+Run this in Colab once (TF 2.16+ is fine), then upload the resulting .h5
+file to replace the checkpoint files in your S3 bucket.
 
 Usage in Colab:
-    !pip install tensorflow==2.15.0 -q
-    # restart runtime, then:
+    !pip install tf-keras -q
     !python convert_weights_to_h5.py
 """
 import os
@@ -15,8 +14,14 @@ import requests
 from io import BytesIO
 
 import tensorflow as tf
-from tensorflow.keras import layers
-from tensorflow.keras.models import Model
+try:
+    import tf_keras as keras
+    from tf_keras import layers
+    from tf_keras.models import Model
+except ImportError:
+    from tensorflow import keras
+    from tensorflow.keras import layers
+    from tensorflow.keras.models import Model
 
 WEIGHTS_URL = "https://dlmodels-bucket.s3.ap-northeast-1.amazonaws.com/root_detection.zip"
 MODEL_NAME = "vgg16_root_detection"
@@ -24,7 +29,7 @@ OUTPUT_H5 = "root_detection.h5"
 
 
 def build_vgg16_model(width=512, height=512, channels=3):
-    vggmodel = tf.keras.applications.vgg16.VGG16(
+    vggmodel = keras.applications.vgg16.VGG16(
         input_shape=(width, height, channels),
         weights='imagenet',
         include_top=False)
@@ -69,7 +74,7 @@ def find_checkpoint(folder, model_name):
 
 
 def convert():
-    tf.keras.backend.clear_session()
+    keras.backend.clear_session()
 
     model_folder = download_and_extract(WEIGHTS_URL)
     checkpoint_path = find_checkpoint(model_folder, MODEL_NAME)
