@@ -37,10 +37,8 @@ def build_vgg16_model(width=512, height=512, channels=3):
     for layer in vggmodel.layers:
         layer.trainable = False
 
-    outputs = [layer.output for layer in vggmodel.layers[1:18]]
-    model = Model(vggmodel.input, outputs)
-
-    x = layers.Dropout(0.3)(model.output[-1])
+    # layer[17] = block5_conv3, matching the original training architecture
+    x = layers.Dropout(0.3)(vggmodel.layers[17].output)
     x = layers.Conv2DTranspose(512, (3, 3), strides=2, activation="relu", padding="same")(x)
     x = layers.BatchNormalization()(x)
     x = layers.Conv2DTranspose(256, (3, 3), strides=2, activation="relu", padding="same")(x)

@@ -27,7 +27,7 @@ from urllib.parse import urlparse
 
 def regNet_model_fixed():
 
-    regnet = tf.keras.applications.regnet.RegNetX160(input_shape=(512,512,3),
+    regnet = keras.applications.regnet.RegNetX160(input_shape=(512,512,3),
                                           weights='imagenet',
                                           include_top=False)
 
@@ -54,39 +54,29 @@ def regNet_model_fixed():
 
 def vgg16_model_fixed(width = 512, heigth=512, channels = 3):
 
-    vggmodel = tf.keras.applications.vgg16.VGG16(
+    vggmodel = keras.applications.vgg16.VGG16(
                                           input_shape=(width,heigth,channels),
                                           weights='imagenet',
                                           include_top=False)
 
+    for layer in vggmodel.layers:
+        layer.trainable = False
 
-    global_average_layer = tf.keras.layers.GlobalAveragePooling2D()
-    x = global_average_layer(vggmodel.output)
+    # layer[17] is block5_conv3 — the encoder output used as decoder input
+    x = layers.Dropout(0.3)(vggmodel.layers[17].output)
 
-    for i, layer in enumerate(vggmodel.layers):
-        layer.trainable=False
-        
-    outputs = [layer.output for layer in vggmodel.layers[1:(18)]]
-
-
-    # add a GAP layer
-    model = Model(vggmodel.input, outputs)
-
-    x = layers.Dropout(0.3)(model.output[-1])
-    
     # Decoder
     x  = layers.Conv2DTranspose(512, (3, 3), strides=2, activation="relu", padding="same")(x)
-    x  = keras.layers.BatchNormalization()(x)
-    x  = layers.Conv2DTranspose(256, (3, 3), strides=2, activation="relu", padding="same")(x )
-    x  = keras.layers.BatchNormalization()(x)
-    x  = layers.Conv2DTranspose(128, (3, 3), strides=2, activation="relu", padding="same")(x )
-    x  = keras.layers.BatchNormalization()(x)
-    x  = layers.Conv2DTranspose(64, (3, 3), strides=2, activation="relu", padding="same")(x )
-    x  = keras.layers.BatchNormalization()(x)
-    x  = layers.Conv2D(1, (3, 3), activation="tanh", padding="same")(x )
+    x  = layers.BatchNormalization()(x)
+    x  = layers.Conv2DTranspose(256, (3, 3), strides=2, activation="relu", padding="same")(x)
+    x  = layers.BatchNormalization()(x)
+    x  = layers.Conv2DTranspose(128, (3, 3), strides=2, activation="relu", padding="same")(x)
+    x  = layers.BatchNormalization()(x)
+    x  = layers.Conv2DTranspose(64, (3, 3), strides=2, activation="relu", padding="same")(x)
+    x  = layers.BatchNormalization()(x)
+    x  = layers.Conv2D(1, (3, 3), activation="tanh", padding="same")(x)
 
-    model = Model(vggmodel.input, x)
-    return model
+    return Model(vggmodel.input, x)
 
 
 
@@ -226,7 +216,7 @@ class root_detector(object):
 
 
     def __init__(self, weigths_path = None, architecture = "vgg16") -> None:
-        tf.keras.backend.clear_session()
+        keras.backend.clear_session()
 
         self.inputshape = [512,512]
         self.achitecturename = architecture
