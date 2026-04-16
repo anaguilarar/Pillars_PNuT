@@ -2,11 +2,17 @@
 import tensorflow as tf
 from root_distance.general_functions import check_dims
 
-import keras
-from tensorflow.keras import layers
-from tensorflow.keras import backend as K
-
-from tensorflow.keras.models import Model
+# Support both legacy tf.keras (TF<2.16) and modern Keras 3 (TF>=2.16)
+try:
+    import tf_keras as keras
+    from tf_keras import layers
+    from tf_keras import backend as K
+    from tf_keras.models import Model
+except ImportError:
+    from tensorflow import keras
+    from tensorflow.keras import layers
+    from tensorflow.keras import backend as K
+    from tensorflow.keras.models import Model
 
 import os
 import numpy as np
@@ -124,7 +130,7 @@ def find_best_epoch(folderpath, load_last = False):
 def readweigths_frompath(weigth_path, modelname = None):
 
     last_epoch = 0
-    
+
     if weigth_path.startswith('http'):
         a = urlparse(weigth_path)
 
@@ -133,14 +139,20 @@ def readweigths_frompath(weigth_path, modelname = None):
 
             with zipfile.ZipFile(BytesIO(req.content)) as zipobject:
                 zipobject.extractall('models')
-        
+
         else:
             with zipfile.ZipFile(os.path.basename(a.path)) as zipobject:
                 zipobject.extractall('models')
-        
+
         newpathtomodel = os.path.join('models',os.path.basename(a.path)[:-4])
+
+        # Prefer HDF5 weights (format-version-agnostic) over TF checkpoints
+        h5files = [i for i in os.listdir(newpathtomodel) if i.endswith('.h5')]
+        if h5files:
+            return os.path.join(newpathtomodel, h5files[0]), 0
+
         fileinfolder = [i for i in os.listdir(newpathtomodel) if i.endswith('index') and i.startswith(modelname)]
-        
+
         if len(fileinfolder)>1:
             wp, last_epoch = find_best_epoch(newpathtomodel)
         elif len(fileinfolder)==1:
