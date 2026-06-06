@@ -4,7 +4,7 @@
 
 ## Overview
 
-This tool automatically detects and measures the displacement of PDMS micropillars caused by a growing *Arabidopsis thaliana* root. The displacement is a direct proxy for **root turgor pressure** — a key indicator of water status and cell expansion.
+This tool automatically detects and measures the displacement of PDMS micropillars caused by a growing *Arabidopsis thaliana* root.
 
 The pipeline combines a deep learning segmentation model (VGG16-based CNN) to detect the root with a Hough circle transform to locate the pillars, then computes inter-pillar distances along the root axis.
 
