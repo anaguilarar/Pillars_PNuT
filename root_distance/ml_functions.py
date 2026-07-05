@@ -152,8 +152,10 @@ def readweigths_frompath(weigth_path, modelname = None):
             raise ValueError("there is no weights files")
 
     else:
+        if weigth_path.endswith('.h5'):
+            return weigth_path, 0
         wp, last_epoch = find_best_epoch(weigth_path)
-    
+
     return wp, last_epoch
         
     
